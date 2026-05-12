@@ -13,7 +13,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATA_DIR: /data
     ports:
-      - "${HTTP_PORT:-3000}:3000"
+      - "${HOST_PORT:-3100}:3000"
     volumes:
       - fitstock-data:/data
     # Shared memory bump helps Chromium
