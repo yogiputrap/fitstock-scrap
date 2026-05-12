@@ -2,8 +2,11 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  Browsers,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import NodeCache from 'node-cache';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import fs from 'node:fs';
@@ -16,7 +19,12 @@ let currentQRDataUrl = null; // PNG data URL for the web view
 let isReady = false;
 let connecting = false;
 
-const baileysLogger = pino({ level: 'silent' });
+const baileysLogger = pino({ level: 'warn' });
+const msgRetryCounterCache = new NodeCache();
+// Tiny LRU of outgoing messages so Baileys can answer retry-decryption requests
+// from the recipient. Without this, messages stay stuck on "waiting for this message".
+const sentMessageCache = new Map();
+const SENT_CACHE_MAX = 200;
 
 function jidFor(numberDigits) {
   return `${numberDigits}@s.whatsapp.net`;
@@ -46,15 +54,43 @@ async function startSocket() {
 
     sock = makeWASocket({
       version,
-      auth: state,
+      auth: {
+        creds: state.creds,
+        // Cache signal keys so Signal Protocol sessions can resolve quickly;
+        // required for reliable message decryption on the receiver side.
+        keys: makeCacheableSignalKeyStore(state.keys, baileysLogger),
+      },
       printQRInTerminal: false,
       logger: baileysLogger,
-      browser: ['FITStock Alert', 'Chrome', '1.0.0'],
+      browser: Browsers.ubuntu('Chrome'),
+      msgRetryCounterCache,
+      generateHighQualityLinkPreview: false,
       syncFullHistory: false,
-      markOnlineOnConnect: false,
+      markOnlineOnConnect: true,
+      // When a recipient can't decrypt, WA asks the sender to re-send the
+      // plaintext. Return the original message body from our small cache.
+      getMessage: async (key) => {
+        const cached = sentMessageCache.get(key?.id);
+        if (cached) return cached;
+        return { conversation: '' };
+      },
     });
 
     sock.ev.on('creds.update', saveCreds);
+
+    // Persist our own outgoing messages for retry-decryption
+    sock.ev.on('messages.upsert', ({ messages }) => {
+      for (const m of messages) {
+        if (m?.key?.fromMe && m.message && m.key.id) {
+          if (sentMessageCache.size >= SENT_CACHE_MAX) {
+            // drop oldest
+            const first = sentMessageCache.keys().next().value;
+            if (first) sentMessageCache.delete(first);
+          }
+          sentMessageCache.set(m.key.id, m.message);
+        }
+      }
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -124,5 +160,28 @@ export async function sendText(text) {
     throw new Error('WhatsApp not ready');
   }
   const jid = jidFor(config.waTarget);
-  await sock.sendMessage(jid, { text });
+
+  // Verify number is registered on WhatsApp (otherwise messages never deliver)
+  try {
+    const [info] = await sock.onWhatsApp(config.waTarget);
+    if (!info?.exists) {
+      throw new Error(`Target number ${config.waTarget} is not on WhatsApp`);
+    }
+  } catch (err) {
+    // Non-fatal: onWhatsApp can occasionally fail even for valid numbers.
+    // Continue attempting send; log the warning.
+    logger.warn({ err: err.message }, 'onWhatsApp check failed, sending anyway');
+  }
+
+  const result = await sock.sendMessage(jid, { text });
+  // Cache immediately so retry-decryption requests can be served without
+  // waiting for the messages.upsert event.
+  if (result?.key?.id && result.message) {
+    if (sentMessageCache.size >= SENT_CACHE_MAX) {
+      const first = sentMessageCache.keys().next().value;
+      if (first) sentMessageCache.delete(first);
+    }
+    sentMessageCache.set(result.key.id, result.message);
+  }
+  return result;
 }
