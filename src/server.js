@@ -5,7 +5,7 @@ import { getStatus, getQRDataUrl } from './whatsapp.js';
 import { size as storeSize } from './store.js';
 
 export function startHttp() {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
 
     if (url === '/health' || url === '/healthz') {
@@ -44,8 +44,22 @@ export function startHttp() {
       return;
     }
 
+    if (url === '/send-test') {
+      try {
+        await sendText(
+          '✅ *FITStock WA Alert — test message*\nKoneksi WhatsApp berjalan normal.',
+        );
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('OK: test message sent');
+      } catch (err) {
+        res.writeHead(500, { 'content-type': 'text/plain' });
+        res.end(`ERROR: ${err.message}`);
+      }
+      return;
+    }
+
     res.writeHead(200, { 'content-type': 'text/plain' });
-    res.end('FITStock WA Alert. Try /qr or /health.');
+    res.end('FITStock WA Alert. Try /qr, /health, or /send-test.');
   });
 
   server.listen(config.httpPort, () => {
