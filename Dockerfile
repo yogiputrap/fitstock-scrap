@@ -1,6 +1,6 @@
 # Use the official Playwright image so Chromium + all its deps are preinstalled.
 # The tag must match the playwright version in package.json.
-FROM mcr.microsoft.com/playwright:v1.49.1-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \
