@@ -1,0 +1,23 @@
+{
+  "name": "fitstock-wa-alert",
+  "version": "1.0.0",
+  "description": "Scrape Stockpick Gratis from fitstock.id every 10s and push new picks to WhatsApp",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.9",
+    "dotenv": "^16.4.5",
+    "pino": "^9.5.0",
+    "playwright": "^1.49.1",
+    "qrcode": "^1.5.4"
+  }
+}
