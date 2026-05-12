@@ -15,6 +15,19 @@ export function startHttp() {
       return;
     }
 
+    if (url === '/status') {
+      const status = getStatus();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(`<html><body style="font-family:sans-serif;padding:2rem">
+        <h2>FITStock WA Alert — Status</h2>
+        <pre>${JSON.stringify({ ...status, seen: storeSize() }, null, 2)}</pre>
+        <p>States: starting → qr (scan QR) → authenticated → ready ✅</p>
+        <p><a href="/qr">QR Page</a> | <a href="/health">Health JSON</a></p>
+        <script>setTimeout(()=>location.reload(), 4000)</script>
+      </body></html>`);
+      return;
+    }
+
     if (url === '/qr') {
       const dataUrl = getQRDataUrl();
       const status = getStatus();
@@ -45,10 +58,14 @@ export function startHttp() {
     }
 
     if (url === '/send-test') {
+      const status = getStatus();
+      if (!status.ready) {
+        res.writeHead(503, { 'content-type': 'text/plain' });
+        res.end(`NOT READY — current state: "${status.state}"\n\nCheck /status for details.\nStates: starting → qr → authenticated → ready\nIf stuck on "authenticated", wait ~30s for WA Web to load.`);
+        return;
+      }
       try {
-        await sendText(
-          '✅ *FITStock WA Alert — test message*\nKoneksi WhatsApp berjalan normal.',
-        );
+        await sendText('✅ *FITStock WA Alert — test message*\nKoneksi WhatsApp berjalan normal.');
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end('OK: test message sent');
       } catch (err) {

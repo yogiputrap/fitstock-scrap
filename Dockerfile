@@ -7,19 +7,17 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     HTTP_PORT=3000 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+    # Skip puppeteer's own Chrome download — we reuse the Chromium
+    # that is already bundled in this image.
+    PUPPETEER_SKIP_DOWNLOAD=true
 
 WORKDIR /app
 
-# Install deps first for better layer caching. Puppeteer's postinstall will
-# download Chrome to PUPPETEER_CACHE_DIR (/app/.cache/puppeteer).
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
-# App source
 COPY src ./src
 
-# Persisted state (mount a volume here)
 RUN mkdir -p /data && chown -R pwuser:pwuser /app /data
 USER pwuser
 
