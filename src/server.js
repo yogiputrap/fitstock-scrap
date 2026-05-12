@@ -28,8 +28,8 @@ export function startHttp() {
       }
       if (!dataUrl) {
         res.end(`<html><body style="font-family:sans-serif;padding:2rem">
-          <h2>Waiting for QR...</h2>
-          <p>Refresh in a few seconds.</p>
+          <h2>Waiting for QR / loading WhatsApp Web...</h2>
+          <p>After scanning, WA Web takes ~30 seconds to fully load. Refresh this page.</p>
           <script>setTimeout(()=>location.reload(), 3000)</script>
         </body></html>`);
         return;
