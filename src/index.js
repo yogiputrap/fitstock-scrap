@@ -5,12 +5,16 @@ import { initWhatsApp, sendText, getStatus } from './whatsapp.js';
 import { startHttp } from './server.js';
 import { has, add, keyOf } from './store.js';
 import { formatPickMessage } from './format.js';
+import { tickStats } from './state.js';
 
 let stopping = false;
 let baselineLoaded = false;
 
 async function tick() {
   if (stopping) return;
+
+  tickStats.count += 1;
+  tickStats.lastTickAt = new Date().toISOString();
 
   let picks = [];
   try {
@@ -20,8 +24,10 @@ async function tick() {
     return;
   }
 
+  tickStats.lastPickCount = picks.length;
+
   if (!picks.length) {
-    logger.debug('no picks extracted this cycle');
+    logger.debug({ tick: tickStats.count }, 'tick: no picks extracted');
     return;
   }
 
@@ -32,33 +38,41 @@ async function tick() {
       logger.info({ count: picks.length }, 'startup: notifying current picks');
     } else {
       for (const p of picks) add(keyOf(p), { ticker: p.ticker, baseline: true });
-      logger.info({ count: picks.length }, 'baseline recorded (not notifying)');
+      logger.info({ tick: tickStats.count, count: picks.length }, 'baseline recorded (not notifying)');
       return;
     }
   }
 
   const fresh = picks.filter((p) => !has(keyOf(p)));
+  tickStats.lastNewCount = fresh.length;
+
+  logger.info(
+    { tick: tickStats.count, total: picks.length, new: fresh.length },
+    'tick complete',
+  );
+
   if (!fresh.length) return;
 
   const waReady = getStatus().ready;
+  let sent = 0;
   for (const pick of fresh) {
     const key = keyOf(pick);
     const body = formatPickMessage(pick);
 
     if (!waReady) {
-      logger.warn({ ticker: pick.ticker }, 'WA not ready, skipping (will retry next cycle)');
-      // do NOT mark as seen; let a future cycle send it once connected
+      logger.warn({ ticker: pick.ticker }, 'WA not ready, will retry next cycle');
       continue;
     }
     try {
       await sendText(body);
       add(key, { ticker: pick.ticker });
-      logger.info({ ticker: pick.ticker, pickTime: pick.pickTime }, 'sent pick');
+      sent += 1;
+      logger.info({ ticker: pick.ticker, pickTime: pick.pickTime }, 'sent pick to WA');
     } catch (err) {
       logger.error({ err: err.message, ticker: pick.ticker }, 'send failed');
-      // don't mark as seen so we retry next cycle
     }
   }
+  tickStats.lastSentCount = sent;
 }
 
 async function main() {

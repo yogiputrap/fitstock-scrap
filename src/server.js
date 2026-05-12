@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { getStatus, getQRDataUrl, sendText } from './whatsapp.js';
 import { size as storeSize } from './store.js';
+import { tickStats } from './state.js';
 
 export function startHttp() {
   const server = http.createServer(async (req, res) => {
@@ -17,13 +18,23 @@ export function startHttp() {
 
     if (url === '/status') {
       const status = getStatus();
+      const data = {
+        whatsapp: status,
+        polling: {
+          intervalMs: config.pollIntervalMs,
+          ...tickStats,
+        },
+        seen: storeSize(),
+      };
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(`<html><body style="font-family:sans-serif;padding:2rem">
+      res.end(`<html><body style="font-family:monospace;padding:2rem">
         <h2>FITStock WA Alert — Status</h2>
-        <pre>${JSON.stringify({ ...status, seen: storeSize() }, null, 2)}</pre>
-        <p>States: starting → qr (scan QR) → authenticated → ready ✅</p>
-        <p><a href="/qr">QR Page</a> | <a href="/health">Health JSON</a></p>
-        <script>setTimeout(()=>location.reload(), 4000)</script>
+        <pre>${JSON.stringify(data, null, 2)}</pre>
+        <p style="font-family:sans-serif;color:#888">
+          WA states: starting → qr (scan) → authenticated → <b>ready ✅</b><br>
+          Auto-refresh every 5s
+        </p>
+        <script>setTimeout(()=>location.reload(), 5000)</script>
       </body></html>`);
       return;
     }
