@@ -3,7 +3,7 @@ import { logger } from './logger.js';
 import { initScraper, fetchPicks, closeScraper } from './scraper.js';
 import { initWhatsApp, sendText, getStatus } from './whatsapp.js';
 import { startHttp } from './server.js';
-import { has, add, keyOf } from './store.js';
+import { has, add, keyOf, size as storeSize } from './store.js';
 import { formatPickMessage } from './format.js';
 import { tickStats } from './state.js';
 
@@ -31,16 +31,18 @@ async function tick() {
     return;
   }
 
-  // First successful poll: baseline existing picks.
+  // Baseline logic: only on the very first ever run (empty store).
+  // If the store already has entries we've run before — skip baseline so any
+  // picks that arrived since the last restart are sent immediately.
+  // This ensures tomorrow's picks are never silently swallowed on restart.
   if (!baselineLoaded) {
     baselineLoaded = true;
-    if (config.notifyOnStartup) {
-      logger.info({ count: picks.length }, 'startup: notifying current picks');
-    } else {
+    if (storeSize() === 0 && !config.notifyOnStartup) {
       for (const p of picks) add(keyOf(p), { ticker: p.ticker, baseline: true });
-      logger.info({ tick: tickStats.count, count: picks.length }, 'baseline recorded (not notifying)');
+      logger.info({ count: picks.length }, 'first-ever run: baseline recorded, not notifying');
       return;
     }
+    logger.info({ stored: storeSize() }, 'store has history — skipping baseline, processing normally');
   }
 
   const fresh = picks.filter((p) => !has(keyOf(p)));

@@ -4,6 +4,8 @@ import { logger } from './logger.js';
 import { getStatus, getQRDataUrl, sendText } from './whatsapp.js';
 import { size as storeSize } from './store.js';
 import { tickStats } from './state.js';
+import { fetchPicks } from './scraper.js';
+import { formatPickMessage } from './format.js';
 
 export function startHttp() {
   const server = http.createServer(async (req, res) => {
@@ -68,6 +70,43 @@ export function startHttp() {
       return;
     }
 
+    if (url === '/force-send') {
+      const status = getStatus();
+      if (!status.ready) {
+        res.writeHead(503, { 'content-type': 'text/plain' });
+        res.end(`NOT READY — WA state: "${status.state}". Wait until state=ready.`);
+        return;
+      }
+      let picks = [];
+      try {
+        picks = await fetchPicks();
+      } catch (err) {
+        res.writeHead(500, { 'content-type': 'text/plain' });
+        res.end(`SCRAPE ERROR: ${err.message}`);
+        return;
+      }
+      if (!picks.length) {
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('No picks found on fitstock.id right now. Try again during market hours.');
+        return;
+      }
+      const results = [];
+      for (const pick of picks) {
+        const body = formatPickMessage(pick);
+        try {
+          await sendText(body);
+          results.push({ ticker: pick.ticker, change: pick.change, status: 'sent' });
+          logger.info({ ticker: pick.ticker }, 'force-send: sent pick');
+        } catch (err) {
+          results.push({ ticker: pick.ticker, change: pick.change, status: 'error', error: err.message });
+          logger.error({ ticker: pick.ticker, err: err.message }, 'force-send: send failed');
+        }
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ picks: results }, null, 2));
+      return;
+    }
+
     if (url === '/send-test') {
       const status = getStatus();
       if (!status.ready) {
@@ -87,7 +126,7 @@ export function startHttp() {
     }
 
     res.writeHead(200, { 'content-type': 'text/plain' });
-    res.end('FITStock WA Alert. Try /qr, /health, or /send-test.');
+    res.end('FITStock WA Alert. Endpoints: /status /qr /health /send-test /force-send');
   });
 
   server.listen(config.httpPort, () => {
