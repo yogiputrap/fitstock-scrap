@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { getStatus, getQRDataUrl } from './whatsapp.js';
+import { getStatus, getQRDataUrl, sendText } from './whatsapp.js';
 import { size as storeSize } from './store.js';
 
 export function startHttp() {
